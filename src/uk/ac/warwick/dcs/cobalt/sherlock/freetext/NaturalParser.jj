@@ -1,0 +1,284 @@
+ /*
+ * Copyright © 1999-2000 The University of Warwick. All Rights Reserved.
+ */
+
+/**
+ * JavaCC source for a Java/C++ comment extractor.
+ *
+ * Need to think of a solution (lookahead = 2 and have <hashLine> as a
+ * do nothing option?) for if #line appears in normal code.
+ * Based on a file written by Ben Hart and Mike Joy.
+ *
+ * @author Daniel White
+ * @version 12 July 2000
+ */
+options {
+  IGNORE_CASE = true;
+  JAVA_UNICODE_ESCAPE = true;
+  STATIC = false;
+}
+
+PARSER_BEGIN(NaturalParser)
+
+package uk.ac.warwick.dcs.cobalt.sherlock.freetext;
+
+import java.io.*;
+import java.util.Date;
+
+/**
+ * Parses a source-code file and places all the comments into sentence objects
+ * which are in turn held by a document object.
+ */
+public class NaturalParser {
+
+  /**
+   * The stream used to save the output file.
+   */
+  static ObjectOutputStream save;
+
+  static Document currentDoc = new Document();
+  static Sentence currentSentence;
+  static String[] sentEnders = {".","?","!",";",":"};
+
+  /**
+   * The new file containing the output of this tokeniser.
+   */
+  static File outputFile = null;
+
+  /**
+   * Keep track of the line number from the file read in. Used to print #line xxx in the outputFile.
+   */
+  static int lineNo = 1;
+
+  static String docName = "";
+  static boolean justStartedSentence = false;
+
+  /**
+   * Reinitialise all the variables, and get on with parsing the whatever's in the input stream.
+   *
+   * @param is - the input stream to parse.
+   * @param f - the file to save the results of this tokeniser to.
+   */
+  public static void ReInit(InputStream is, File f, String docName) {
+    NaturalParser.currentDoc = new Document();
+    NaturalParser.currentSentence = null;
+    NaturalParser.outputFile = f;
+    NaturalParser.lineNo = 1;
+    NaturalParser.docName = docName;
+    //NaturalParser.ReInit(is);
+  } // ReInit
+
+  public void setOutput(File f, String docName){
+    NaturalParser.currentDoc = new Document();
+    NaturalParser.currentSentence = null;
+    NaturalParser.outputFile = f;
+    NaturalParser.lineNo = 1;
+    NaturalParser.docName = docName;
+  }
+
+
+  public static void main(String args[]) throws ParseException {
+    NaturalParser parser = new NaturalParser(System.in);
+    parser.Input();
+    Document doc = NaturalParser.currentDoc;
+    System.out.println(doc);
+  }
+}
+PARSER_END(NaturalParser)
+
+
+TOKEN_MGR_DECLS : {
+  static int endCol, startCol;
+  static int lastIndex = -1;
+
+  void wordParsed() {
+    if(NaturalParser.justStartedSentence || NaturalParser.currentSentence == null){
+      NaturalParser.justStartedSentence = false;
+      startCol = input_stream.getBeginColumn();
+      NaturalParser.currentSentence =
+        NaturalParser.currentDoc.startSentence(NaturalParser.lineNo,
+          startCol + image.lastIndexOf("."));
+    }
+    NaturalParser.currentSentence.addWord(image.toString());
+}
+}
+
+TOKEN : {
+  <newLine : "\r\n" | "\r" | "\n"> : parser
+}
+
+TOKEN : {
+  // Obviously there are combinations here which don't make sense in that
+  // no-one would ever use them, but it doesn't have to be pinpoint accurate.
+  <sentEnd : (<endBracket> | "'" | "\"" )* ("." | "?" | "!" | ";" | ":" ) ("'" | "\"" | " ")*> : parser
+  | <#endBracket : (<number>)* (")" | "]" | "}") >
+  //| <openBracket : ("(" | "[" | "{") > : parser
+}
+
+<parser> SKIP : {
+  < <newLine> > {
+    NaturalParser.lineNo++;
+  } : parser
+|
+  < <word>"."<word> > {
+    wordParsed();
+  } : parser
+|
+/*  < <word><sentEnd> > {
+    if(NaturalParser.justStartedSentence || NaturalParser.currentSentence == null){
+      startCol = input_stream.getBeginColumn();
+      assert (startCol == input_stream.getEndColumn()-image.length());
+      NaturalParser.currentSentence =
+        NaturalParser.currentDoc.startSentence(NaturalParser.lineNo,
+          startCol);
+    }
+    lastIndex = -1;
+    for(int i = 0; i<NaturalParser.sentEnders.length; i++){
+      lastIndex = image.lastIndexOf(NaturalParser.sentEnders[i]);
+      // This will evaluate to true once because the <sentEnd> token is in image.
+      if(lastIndex != -1)
+        break;
+    }
+    NaturalParser.currentSentence.addWord(
+        image.substring(0, lastIndex));
+
+
+    endCol = input_stream.getEndColumn();
+    NaturalParser.currentDoc.endSentence(NaturalParser.lineNo,
+      endCol);
+    NaturalParser.justStartedSentence = true;
+  } : parser
+|*/
+  < <word> > {
+    wordParsed();
+  } : parser
+|
+  < <sentEnd> > {
+    if(NaturalParser.currentSentence != null && !NaturalParser.justStartedSentence)
+      NaturalParser.currentDoc.endSentence(NaturalParser.lineNo,
+        input_stream.getEndColumn());
+    NaturalParser.justStartedSentence = true;
+  } : parser
+|
+  < <others> > {
+    // Do nothing
+  } : parser
+}
+
+TOKEN : {
+  <hashLine : "#line ">
+| <number : ( ["0" - "9"] ) +>
+}
+
+TOKEN : {
+  // The weird construction of this expression is so that words
+  // like contractions (eg. it's or I'm) will be kept
+  // together on a line.
+  // I've allowed a word ending in a dash to be a seperate word for now
+  // but later I should make it so that it concatenates the word on the
+  // next line.
+  <word : (<subword>)+ ((["'"])+ (<subword>)+)* ("-")* > {
+    wordParsed();
+  } : parser
+| <#subword :["A"-"Z", "a"-"z", "-"](["A"-"Z", "a"-"z", "0"-"9", "-"])* >
+| <space : ( [" "] )+ >
+}
+TOKEN : {
+  <others : ~[] > : parser
+|
+< character_literal:
+      "'"
+      (   (~["'","\\","\n","\r"])
+        | ("\\"
+            ( ["n","t","b","r","f","\\","'","\""]
+            | ["0"-"7"] ( ["0"-"7"] )?
+            | ["0"-"3"] ["0"-"7"] ["0"-"7"]
+            )
+          )
+      )
+      "'"
+  > : parser
+|
+  < string_literal:
+      "\""
+      (   (~["\"","\\","\n","\r"])
+        | ("\\"
+            ( ["n","t","b","r","f","\\","'","\""]
+            | ["0"-"7"] ( ["0"-"7"] )?
+            | ["0"-"3"] ["0"-"7"] ["0"-"7"]
+            )
+          )
+      )*
+      "\""
+  > : parser
+}
+/**
+ * Handle any tokens during the input.
+ */
+void anyOldLines () : {
+}
+{
+  <newLine> {
+      lineNo++;
+    }
+| <number> | <word> | <space> | <character_literal> | <string_literal>
+| <others> | <sentEnd> //| <endBracket>  | <openBracket> // Do nothing.
+}
+
+
+void Input () : {
+
+  try {
+    if (outputFile!= null)
+      save = new ObjectOutputStream(
+                             new FileOutputStream(outputFile));
+    else{
+      File f = new File(System.getProperty("user.home"), "testing");
+      save = new ObjectOutputStream(
+                             new FileOutputStream(f));
+    }
+  } catch (IOException e) {
+      Date day = new Date(System.currentTimeMillis());
+      if (outputFile != null) {
+        try {
+            String file = new String
+                (System.getProperty("user.home") + File.pathSeparator
+                 + "sherlock.log");
+            BufferedWriter bw = new BufferedWriter
+                (new FileWriter(file, true));
+            bw.write(day + "-" + "Cannot write to: "
+                     + outputFile.getAbsolutePath());
+            bw.newLine();
+            bw.close();
+        }
+        catch (IOException e2) {
+            if (outputFile != null)
+                System.err.println(day + "-" + "Cannot write to: "
+                                   + outputFile.getAbsolutePath());
+        }
+      }
+      else System.err.println(day + "-" + "Cannot write to System.out");
+      return;
+  }
+}
+{
+  (anyOldLines())* <EOF> {
+    // Tidy the document object
+    if(NaturalParser.currentSentence != null && !NaturalParser.justStartedSentence)
+      NaturalParser.currentDoc.endSentence(token.endLine,
+        token.endColumn);
+    NaturalParser.currentDoc.finishedParsing();
+    NaturalParser.currentDoc.setFileName(NaturalParser.docName);
+    try{
+      // Write it to the output file.
+      save.writeObject(NaturalParser.currentDoc);
+
+      // Finish up.
+      save.flush();
+      save.close();
+    } catch(IOException ioe){
+      System.err.println("Error writing to file "+NaturalParser.outputFile);
+    }
+  }
+}
+

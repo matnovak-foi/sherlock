@@ -1,0 +1,790 @@
+/*
+ * Copyright � 1999-2000 The University of Warwick. All Rights Reserved.
+ */
+
+/**
+ * JavaCC grammar for a Java tokeniser.
+ *
+ * This tokeniser grammar was written in a similar way to that of the
+ * others, using JavaCC's STATIC option to reuse each tokeniser via its
+ * XXX.ReInit(stream) method.
+ *
+ * However, using the JAVA_UNICODE_ESCAPE flag here to allow unicode input
+ * means that there is a huge problem:  the resulting Java.java
+ * tokeniser's ReInit method calls the ASCII_UCodeESC_CharStream's ReInit
+ * method, but that isn't static, and therefore a NullPointerException is
+ * thrown when the code is run from within Sherlock 2000.
+ *
+ * The simplest (but far from most desirable) way round this problem is to
+ * manually make each of the four ReInit methods in
+ * ASCII_UCodeESC_CharStream static *after* JavaCC has created the class.
+ *
+ * There seems to be no way to force JavaCC to make the methods contained
+ * in ASCII_UCodeESC_CharStream static, so without entirely changing
+ * Java.jj to work with STATIC=false, this is the easiest way round the
+ * problem.
+ *
+ * Obviously this needs to be addressed for long term development, but
+ * I've been staring at the code for too long now, and it would benefit
+ * from a fresh set of eyes and a yet-to-be-fried brain! :)
+ * 
+ * Added support for strictfp and assert.
+ *
+ * @author Ben Hart
+ * @author Mike Joy
+ * @author Weiliang Zhang
+ * @version 1 Aug 2002
+ */
+
+options {
+  JAVA_UNICODE_ESCAPE = true;
+  //STATIC=false;
+  // Do not ignore case though.
+}
+
+PARSER_BEGIN(Java)
+
+package uk.ac.warwick.dcs.cobalt.sherlock;
+
+import java.io.*;
+import java.util.Date;
+
+class Java {
+
+  /**
+   * The stream used to save the output file.
+   */
+  static PrintStream save;
+
+  /**
+   * The new file containing the output of this tokeniser.
+   */
+  static File outputFile = null;
+
+  /**
+   * Keep track of the line number from the file read in. Used to print #line xxx in the outputFile.
+   */
+  static int lineNo = 1;
+
+  /**
+   * If true print the current line number before the next token - this is done after reading in a #line xxx,
+   * or having found a comment.
+   */
+  static boolean printLineNumber = false;
+
+  /**
+   * Used to control when a new line is started in the outputted file.
+   */
+  static boolean seenNewLine = false;
+
+
+  /**
+   * Reinitialise all the variables, and get on with parsing the whatever's in the input stream.
+   *
+   * @param is - the input stream to parse.
+   * @param f - the file to save the results of this tokeniser to.
+   */
+  static void ReInit(InputStream is, File f) {    
+    // Don't need to reinitialise the PrintStream, it's done for us.
+    Java.outputFile = f;
+    Java.lineNo=1;
+    Java.seenNewLine=false;
+    Java.printLineNumber=false;
+    Java.ReInit(is);
+  } // ReInit
+
+
+  /**
+   * Print the current line number into the new file.
+   */
+  static void printLineNo() {
+    if (printLineNumber) {
+      save.println();
+      save.println("#line "+lineNo);
+      printLineNumber = false;
+    }
+ } // printLine
+
+
+  /**
+   * Print the passed string into the new file.
+   *
+   * @param stringToPrint the string to print.
+   */
+  static void toPrint(String stringToPrint) {
+    printLineNo();
+    if (seenNewLine)
+      save.println();
+    seenNewLine = false;
+    save.print(stringToPrint);
+  } // toPrint
+
+
+  public static void main(String args[]) throws ParseException {
+    Java parser = new Java(System.in);
+    parser.Input();
+  }
+
+} // Java
+PARSER_END(Java)
+
+TOKEN_MGR_DECLS : {
+}
+
+/* Basic Blocks */
+TOKEN : {
+  <newLine : "\n" | "\r" | "\r\n"> {
+    Java.lineNo++;
+    if (Java.seenNewLine)
+      Java.printLineNumber = true;
+    Java.seenNewLine = true;
+  }
+}
+
+TOKEN : {
+  <hashLine : "#line ">
+}
+
+
+/*
+ * Comments - remove them.
+ */
+TOKEN : {
+  <singleLineComment : "//"> {
+    Java.toPrint("<SINGLE_LINE_COMMENT>");
+    Java.printLineNumber = true;
+  } : inSingleLineComment
+}
+
+TOKEN : {
+  <multiLineComment : "/*"> {
+    Java.toPrint("<MULTI_LINE_COMMENT>");
+    Java.printLineNumber = true;
+  } : inAnyMultiLineComment
+}
+
+TOKEN : {
+  <formalComment : "/**" ~["/"]> {
+    input_stream.backup(1);
+    Java.toPrint("<FORMAL_COMMENT>");
+    Java.printLineNumber = true;
+  } : inAnyMultiLineComment
+}
+
+<inSingleLineComment> SKIP : {
+  < <newLine> > {
+    Java.lineNo++;
+    Java.seenNewLine = true;
+  } : DEFAULT
+}
+
+<inAnyMultiLineComment> SKIP : {
+  < <newLine> > {
+    Java.lineNo++;
+  } : inAnyMultiLineComment
+|
+  <endAnyMultiLineComment : "*/"> {
+  } : DEFAULT
+}
+
+<inSingleLineComment, inAnyMultiLineComment> SKIP : {
+  < ~[] >
+}
+
+
+/**
+ * Reserved Words
+ */
+TOKEN : {
+  < CONST: "const" > {
+    Java.toPrint("<RSVD>");
+  } // Not used - reserved
+|
+  < GOTO: "goto" > {
+    Java.toPrint("<RSVD>");
+  } // Not used - reserved
+}
+
+/**
+ * Types
+ */
+TOKEN : {
+  < TYPE: "boolean" | "byte" | "char" | "double" | "void" | "long" | "String" > {
+    Java.toPrint("<TYPE>");
+  }
+}
+
+/**
+ * Literals
+ */
+TOKEN : {
+  < BREAK: "break" > {
+    Java.toPrint("<BREAK>");
+  }
+|
+  < CASE: "case" > {
+    Java.toPrint("<CASE>");
+  }
+|
+  < CATCH: "catch" > {
+    Java.toPrint("<CATCH>");
+  }
+|
+  < CLASS: "class" > {
+    Java.toPrint("<CLASS>");
+  }
+|
+  < CONTINUE: "continue" > {
+    Java.toPrint("<BREAK>");
+  }
+|
+  < _DEFAULT: "default" > {
+    Java.toPrint("<CASE>");
+  }
+|
+  < DO: "do" > {
+    Java.toPrint("<LOOP>");
+  }
+|
+  < ELSE: "else" > {
+    Java.toPrint("<IF>");
+  }
+|
+  < FALSE: "false" > {
+    Java.toPrint("<BOOL>");
+  }
+|
+  < FINALLY: "finally" > {
+    Java.toPrint("<FINALLY>");
+  }
+|
+  < FLOAT: "float" > {
+    Java.toPrint("<TYPE>");
+  }
+|
+  < FOR: "for" > {
+    Java.toPrint("<LOOP>");
+  }
+|
+  < IF: "if" > {
+    Java.toPrint("<IF>");
+  }
+|
+  < IMPLEMENTS: "implements" > {
+    Java.toPrint("<MODIFIER>");
+  }
+|
+  < IMPORT: "import" > {
+    Java.toPrint("<IMPORT>");
+  }
+|
+  < INSTANCEOF: "instanceof" > {
+    Java.toPrint("=="); // Can be used for comparison of types.
+  }
+|
+  < INT: "int" > {
+    Java.toPrint("<TYPE>");
+  }
+|
+  < INTERFACE: "interface" > {
+    Java.toPrint("<MODIFIER>");
+  }
+|
+  < NATIVE: "native" > {
+    Java.toPrint("<NATIVE>");
+  }
+|
+  < NEW: "new" > {
+    Java.toPrint("<NEW>");
+  }
+|
+  < NULL: "null" > {
+    Java.toPrint("<NULL>");
+  }
+|
+  < PACKAGE: "package"> {
+    Java.toPrint("<PACKAGE>");
+  }
+|
+  < RETURN: "return" > {
+    Java.toPrint("<RETURN>");
+  }
+|
+  < SHORT: "short" > {
+    Java.toPrint("<TYPE>");
+  }
+|
+  < SUPER: "super" > {
+    Java.toPrint("<SUPER>");
+  }
+|
+  < SWITCH: "switch" > {
+    Java.toPrint("<CASE>");
+  }
+|
+  < THIS: "this." > {
+    Java.toPrint(""); // Use this. as this could be used as a disguise.
+  }
+|
+  < THROW: "throw" > {
+    Java.toPrint("<TRY>");
+  }
+|
+  < TRUE: "true" > {
+    Java.toPrint("<BOOL>");
+  }
+|
+  < TRY: "try" > {
+    Java.toPrint("<TRY>");
+  }
+|
+  < WHILE: "while" > {
+    Java.toPrint("<LOOP>");
+  }
+| 
+  < ASSERT: "assert" > {
+    Java.toPrint("<ASSERT>");
+  }
+}
+
+/**
+ * Modifiers
+ */
+TOKEN : {
+  < MODIFIERS : "abstract" | "extends" | "final" | "private" | "protected" 
+   | "public" | "static" | "synchronized" | "throws" | "transient" 
+   | "strictfp" | "volatile" > {
+    Java.toPrint("<MODIFIER>");
+  }
+}
+
+/**
+ * Identifiers
+ */
+TOKEN : {
+  < IDENTIFIER: ( <LETTER> ) | ( <LETTER> (<LETTER>|<DIGIT>)* ) > {
+    Java.toPrint("<IDT>");
+  }
+|
+  < #LETTER: //["a"-"z","A"-"Z","_","$"]
+      [
+       "\u0024",
+       "\u0041"-"\u005a",
+       "\u005f",
+       "\u0061"-"\u007a",
+       "\u00c0"-"\u00d6",
+       "\u00d8"-"\u00f6",
+       "\u00f8"-"\u00ff",
+       "\u0100"-"\u1fff",
+       "\u3040"-"\u318f",
+       "\u3300"-"\u337f",
+       "\u3400"-"\u3d2d",
+       "\u4e00"-"\u9fff",
+       "\uf900"-"\ufaff"
+      ]
+  >
+|
+  < #DIGIT:
+      [
+       "\u0030"-"\u0039",
+       "\u0660"-"\u0669",
+       "\u06f0"-"\u06f9",
+       "\u0966"-"\u096f",
+       "\u09e6"-"\u09ef",
+       "\u0a66"-"\u0a6f",
+       "\u0ae6"-"\u0aef",
+       "\u0b66"-"\u0b6f",
+       "\u0be7"-"\u0bef",
+       "\u0c66"-"\u0c6f",
+       "\u0ce6"-"\u0cef",
+       "\u0d66"-"\u0d6f",
+       "\u0e50"-"\u0e59",
+       "\u0ed0"-"\u0ed9",
+       "\u1040"-"\u1049"
+      ]
+  >
+}
+
+/**
+ * Number Literals.
+ */
+TOKEN : {
+  < INTEGER_LITERAL: <DECIMAL_LITERAL> (["l","L"])? 
+    | <HEX_LITERAL> (["l","L"])? | <OCTAL_LITERAL> (["l","L"])? > {
+    Java.toPrint("<VALUE>"); // Careful with #line
+  }
+|
+  < #DECIMAL_LITERAL: ["1"-"9"] (["0"-"9"])* >
+|
+  < #HEX_LITERAL: "0" ["x","X"] (["0"-"9","a"-"f","A"-"F"])+ >
+|
+  < #OCTAL_LITERAL: "0" (["0"-"7"])* >
+|
+
+  < FLOATING_POINT_LITERAL:
+        (["0"-"9"])+ "." (["0"-"9"])* (<EXPONENT>)? (["f","F","d","D"])?
+      | "." (["0"-"9"])+ (<EXPONENT>)? (["f","F","d","D"])?
+      | (["0"-"9"])+ <EXPONENT> (["f","F","d","D"])?
+      | (["0"-"9"])+ (<EXPONENT>)? ["f","F","d","D"] > {
+    Java.toPrint("<VALUE>");
+  }
+|
+  < #EXPONENT: ["e","E"] (["+","-"])? (["0"-"9"])+ >
+|
+  < CHARACTER_LITERAL:
+      "'"
+      (   (~["'","\\","\n","\r"])
+        | ("\\"
+            ( ["n","t","b","r","f","\\","'","\""]
+            | ["0"-"7"] ( ["0"-"7"] )?
+            | ["0"-"3"] ["0"-"7"] ["0"-"7"]
+            )
+          )
+      )
+      "'" > {
+    Java.toPrint("<VALUE>");
+  }
+|
+  < STRING_LITERAL:
+      "\""
+      (   (~["\"","\\","\n","\r"])
+        | ("\\"
+            ( ["n","t","b","r","f","\\","'","\""]
+            | ["0"-"7"] ( ["0"-"7"] )?
+            | ["0"-"3"] ["0"-"7"] ["0"-"7"]
+            )
+          )
+      )*
+      "\"" > {
+    Java.toPrint("<VALUE>");
+  }
+}
+
+/**
+ * Separators
+ */
+TOKEN : {
+  < LPAREN: "(" > {
+    Java.toPrint("(");
+  }
+|
+  < RPAREN: ")" > {
+    Java.toPrint(")");
+  }
+|
+  < LBRACE: "{" > {
+    Java.toPrint("{");
+  }
+|
+  < RBRACE: "}" > {
+    Java.toPrint("}");
+  }
+|
+  < LBRACKET: "[" > {
+    Java.toPrint("[");
+  }
+|
+  < RBRACKET: "]" > {
+    Java.toPrint("]");
+  }
+|
+  < SEMICOLON: ";" > {
+    Java.toPrint("");
+  }
+|
+  < COMMA: "," > {
+    Java.toPrint(",");
+  }
+|
+  < DOT: "." > {
+    Java.toPrint(".");
+  }
+}
+
+/**
+ * Operators.
+ */
+TOKEN : {
+  < ASSIGN: "=" > {
+    Java.toPrint("=");
+  }
+|
+  < GT: ">" > {
+    Java.toPrint("==");
+  }
+|
+  < LT: "<" > {
+    Java.toPrint("==");
+  }
+|
+  < BANG: "!" > {
+    Java.toPrint("");
+  }
+|
+  < TILDE: "~" > {
+    Java.toPrint("~");
+  }
+|
+  < HOOK: "?" > {
+    Java.toPrint("?");
+  }
+|
+  < COLON: ":" > {
+    Java.toPrint(":");
+  }
+|
+  < EQ: "==" > {
+    Java.toPrint("==");
+  }
+|
+  < LE: "<=" > {
+    Java.toPrint("==");
+  }
+|
+  < GE: ">=" > {
+    Java.toPrint("==");
+  }
+|
+  < NE: "!=" > {
+    Java.toPrint("==");
+  }
+|
+  < SC_OR: "||" > {
+    Java.toPrint("&&");
+  }
+|
+  < SC_AND: "&&" > {
+    Java.toPrint("&&");
+  }
+|
+  < INCR: "++" > {
+    Java.toPrint("+=<NUM>");
+  }
+|
+  < DECR: "--" > {
+    Java.toPrint("-=<NUM>");
+  }
+|
+  < PLUS: "+" > {
+    Java.toPrint("+");
+  }
+|
+  < MINUS: "-" > {
+    Java.toPrint("-");
+  }
+|
+  < STAR: "*" > {
+    Java.toPrint("*");
+  }
+|
+  < SLASH: "/" > {
+    Java.toPrint("/");
+  }
+|
+  < BIT_AND: "&" > {
+    Java.toPrint("&");
+  }
+|
+  < BIT_OR: "|" > {
+    Java.toPrint("&");
+  }
+|
+  < XOR: "^" > {
+    Java.toPrint("&");
+  }
+|
+  < REM: "%" > {
+    Java.toPrint("%");
+  }
+}
+
+TOKEN : {
+  < SHIFT: "<<" | ">>" | ">>>" > {
+    Java.toPrint("<<");
+  }
+}
+
+TOKEN : {
+  < PLUSASSIGN: "+=" > {
+    Java.toPrint("+=");
+  }
+|
+  < MINUSASSIGN: "-=" > {
+    Java.toPrint("-=");
+  }
+|
+  < STARASSIGN: "*=" > {
+    Java.toPrint("*=");
+  }
+|
+  < SLASHASSIGN: "/=" > {
+    Java.toPrint("/=");
+  }
+}
+
+TOKEN : {
+  < ANDASSIGN: "&=" | "|=" | "^=" > {
+    Java.toPrint("&=");
+  }
+|
+  < REMASSIGN: "%=" > {
+    Java.toPrint("%=");
+  }
+|
+  < SHIFTASSIGN: "<<=" | ">>=" | ">>>=" > {
+    Java.toPrint("<<=");
+  }
+}
+
+/**
+ * White Space
+ */
+SKIP : {
+ <"\f" | " " | "\t">
+}
+
+TOKEN : {
+  <others : ~["a"-"z"] >
+}
+
+void anyOldLines () : {
+}
+{
+  <singleLineComment>
+|
+  <formalComment>
+|
+  <multiLineComment>
+|
+  <hashLine><INTEGER_LITERAL> {
+    seenNewLine = false;
+    lineNo = Integer.parseInt(getToken(0).image);
+    printLineNumber = true;
+    printLineNo();
+    // The newLine that follows this will incorrectly add 1 to the line count, so correct this in advance.
+    // Must remember, the number refers to the original number of the *following* line.
+    lineNo--;
+    }
+| < LPAREN >
+| < RPAREN >
+| < LBRACE >
+| < RBRACE >
+| < LBRACKET >
+| < RBRACKET >
+| < SEMICOLON >
+| < COMMA >
+| < DOT >
+| < ASSIGN >
+| < GT >
+| < LT >
+| < BANG >
+| < TILDE >
+| < HOOK >
+| < COLON >
+| < EQ >
+| < LE >
+| < GE >
+| < NE>
+| < SC_OR >
+| < SC_AND >
+| < INCR >
+| < DECR >
+| < PLUS>
+| < MINUS>
+| < STAR>
+| < SLASH>
+| < BIT_AND>
+| < BIT_OR>
+| < XOR>
+| < REM>
+| < SHIFT>
+| < PLUSASSIGN>
+| < MINUSASSIGN>
+| < STARASSIGN>
+| < SLASHASSIGN>
+| < ANDASSIGN>
+| < REMASSIGN>
+| < SHIFTASSIGN>
+| < BREAK >
+| < CASE >
+| < CATCH >
+| < CLASS >
+| < CONST >
+| < CONTINUE >
+| < _DEFAULT >
+| < DO >
+| < ELSE >
+| < FALSE >
+| < FINALLY >
+| < FLOAT >
+| < FOR >
+| < GOTO >
+| < IF >
+| < IMPLEMENTS >
+| < IMPORT >
+| < INSTANCEOF >
+| < INT >
+| < INTERFACE >
+| < NATIVE >
+| < NEW >
+| < MODIFIERS >
+| < NULL >
+| < PACKAGE>
+| < RETURN >
+| < SHORT >
+| < SUPER >
+| < SWITCH >
+| < THIS >
+| < THROW >
+| < TRUE >
+| < TRY >
+| < TYPE >
+| < WHILE >
+| < INTEGER_LITERAL >
+| < FLOATING_POINT_LITERAL >
+| < CHARACTER_LITERAL >
+| < STRING_LITERAL >
+| < IDENTIFIER >
+| < ASSERT >
+| <newLine>
+| <others> {
+      if (seenNewLine)
+        Java.save.println();
+      seenNewLine=false;
+      Java.toPrint(token.image);
+    }
+}
+
+void Input () : {
+  try    {
+      if (outputFile!=null)
+        Java.save = new PrintStream(new FileOutputStream(outputFile));
+      else
+        save = System.out;
+  } catch (IOException e) {
+      Date day = new Date(System.currentTimeMillis());
+      if (outputFile != null) {
+        try {
+            String file = new String
+                (System.getProperty("user.home") + Settings.fileSep
+                 + "sherlock.log");
+            BufferedWriter bw = new BufferedWriter
+                (new FileWriter(file, true));
+            bw.write(day + "-" + "Cannot write to: "
+                     + outputFile.getAbsolutePath());
+            bw.newLine();
+            bw.close();
+        }
+        catch (IOException e2) {
+            if (outputFile != null)
+                System.err.println(day + "-" + "Cannot write to: "
+                                   + outputFile.getAbsolutePath());
+        }
+      }
+      else System.err.println(day + "-" + "Cannot write to System.out");
+      return;
+  }
+}
+{
+  (anyOldLines())* <EOF>
+}

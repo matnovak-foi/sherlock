@@ -1,0 +1,259 @@
+/*
+ * Copyright � 1999-2000 The University of Warwick. All Rights Reserved.
+ */
+
+/**
+ * JavaCC source for a Java/C++ comment extractor.
+ *
+ * Need to think of a solution (lookahead = 2 and have <hashLine> as a
+ * do nothing option?) for if #line appears in normal code.
+ *
+ * @author Ben Hart
+ * @author Mike Joy
+ * @author Daniel White
+ * @version 12 July 2000
+ */
+options {
+  IGNORE_CASE = true;
+  //STATIC = false;
+}
+
+PARSER_BEGIN(Comment)
+
+package uk.ac.warwick.dcs.cobalt.sherlock;
+
+import java.io.*;
+import java.util.Date;
+
+/**
+ * Class to extract all comments from Java files and place them in a file with one
+ * word per line.
+ */
+class Comment {
+
+  /**
+   * The stream used to save the output file.
+   */
+  static PrintStream save;
+
+  /**
+   * The new file containing the output of this tokeniser.
+   */
+  static File outputFile = null;
+
+  /**
+   * Keep track of the line number from the file read in. Used to print #line xxx in the outputFile.
+   */
+  static int lineNo = 1;
+
+  /**
+   * Reinitialise all the variables, and get on with parsing the whatever's in the input stream.
+   *
+   * @param is - the input stream to parse.
+   * @param f - the file to save the results of this tokeniser to.
+   */
+  static void ReInit(InputStream is, File f) {
+    // Don't need to reinitialise the PrintStream save, it's done for us.
+    Comment.outputFile = f;
+    Comment.lineNo = 1;
+    Comment.ReInit(is);
+  } // ReInit
+
+
+  /**
+   * Print the current line number into the new file.
+   */
+  static void printLineNo() {
+    save.println("#line " + lineNo);
+  } // printLineNo
+
+
+  public static void main(String args[]) throws ParseException {
+    Comment parser = new Comment(System.in);
+    parser.Input();
+  }
+}
+PARSER_END(Comment)
+
+
+TOKEN_MGR_DECLS : {
+  static boolean justStartedComment = false;
+}
+
+TOKEN : {
+  <singleLineComment: "//" > {
+    justStartedComment = true;
+  } : inSingleLineComment
+}
+
+<inSingleLineComment> SKIP : {
+  < <newLine> > {
+    Comment.lineNo++;
+
+  } : DEFAULT
+|
+  < <word> > {
+    // A hashline only gets printed if there is a word in the comment.
+    if(justStartedComment){
+        justStartedComment = false;
+      Comment.printLineNo();
+    }
+    Comment.save.println(image);
+  } : inSingleLineComment
+|
+  < <others> > {
+        // Do Nothing.
+  } : inSingleLineComment
+}
+
+TOKEN : {
+  <formalComment : "/**" ~["/"]> {
+    justStartedComment = true;
+    input_stream.backup(1);
+  } : inFormalOrMultiLineComment
+}
+
+TOKEN : {
+  <multiLineComment : "/*" > {
+    justStartedComment = true;
+  } : inFormalOrMultiLineComment
+}
+
+<inFormalOrMultiLineComment> SKIP : {
+  <endFormalOrMultiLineComment : "*/" > {
+        // Do nothing.
+  } : DEFAULT
+|
+  < <newLine> > {
+    Comment.lineNo++;
+    // by setting this to true we ensure that the line number is printed
+    // when a word is parsed.
+    justStartedComment = true;
+  } : inFormalOrMultiLineComment
+|
+  < <word> > {
+    if(justStartedComment){
+        justStartedComment = false;
+        Comment.printLineNo();
+    }
+    Comment.save.println(image);
+  } : inFormalOrMultiLineComment
+|
+  < <others> > {
+    // Do nothing
+  } : inFormalOrMultiLineComment
+}
+
+TOKEN : {
+  <newLine : "\r\n" | "\r" | "\n">
+}
+
+TOKEN : {
+  <hashLine : "#line ">
+| <number : ( ["0" - "9"] ) +>
+}
+
+TOKEN : {
+  // The weird construction of this expression is so that words
+  // like package names and contractions (eg. it's or I'm) will be kept
+  // together on a line.
+  <word : (<subword>)+ (([".","'"])+ (<subword>)+)* >
+| <#subword :(["A"-"Z", "a"-"z", "0"-"9", "-"])+ >
+| <space : ( [" "] )+ >
+}
+TOKEN : {
+  <others : ~[] >
+|
+< character_literal:
+      "'"
+      (   (~["'","\\","\n","\r"])
+        | ("\\"
+            ( ["n","t","b","r","f","\\","'","\""]
+            | ["0"-"7"] ( ["0"-"7"] )?
+            | ["0"-"3"] ["0"-"7"] ["0"-"7"]
+            )
+          )
+      )
+      "'"
+  >
+|
+  < string_literal:
+      "\""
+      (   (~["\"","\\","\n","\r"])
+        | ("\\"
+            ( ["n","t","b","r","f","\\","'","\""]
+            | ["0"-"7"] ( ["0"-"7"] )?
+            | ["0"-"3"] ["0"-"7"] ["0"-"7"]
+            )
+          )
+      )*
+      "\""
+  >
+}
+/**
+ * Handle any tokens during the input.
+ */
+void anyOldLines () : {
+}
+{
+  <singleLineComment>
+|
+  <formalComment>
+|
+  <multiLineComment>
+|
+  <hashLine><number> {
+      lineNo = Integer.parseInt(Comment.getToken(0).image);
+    // The newLine after will incorrectly add 1 to the line count, so correct this in advance.
+    // Must remember, the number refers to the original number of the *following* line.
+    lineNo--;
+    }
+|
+  <newLine> {
+      lineNo++;
+    }
+| <number> | <word> | <space> | <character_literal> | <string_literal>
+|
+  <others> // Do nothing.
+}
+
+
+void Input () : {
+
+  try {
+    if (outputFile!= null)
+      save = new PrintStream(new FileOutputStream(outputFile));
+    else
+      save = System.out;
+  } catch (IOException e) {
+      Date day = new Date(System.currentTimeMillis());
+      if (outputFile != null) {
+        try {
+            String file = new String
+                (System.getProperty("user.home") + File.pathSeparator
+                 + "sherlock.log");
+            BufferedWriter bw = new BufferedWriter
+                (new FileWriter(file, true));
+            bw.write(day + "-" + "Cannot write to: "
+                     + outputFile.getAbsolutePath());
+            bw.newLine();
+            bw.close();
+        }
+        catch (IOException e2) {
+            if (outputFile != null)
+                System.err.println(day + "-" + "Cannot write to: "
+                                   + outputFile.getAbsolutePath());
+        }
+      }
+      else System.err.println(day + "-" + "Cannot write to System.out");
+      return;
+  }
+}
+{
+  (anyOldLines())* <EOF> {
+
+    save.flush();
+    save.close();
+  }
+}
+

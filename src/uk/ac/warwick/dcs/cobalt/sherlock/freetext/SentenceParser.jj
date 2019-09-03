@@ -1,0 +1,371 @@
+/*
+ * Copyright © 1999-2000 The University of Warwick. All Rights Reserved.
+ */
+
+/**
+ * JavaCC source for a Java/C++ comment extractor.
+ *
+ * Need to think of a solution (lookahead = 2 and have <hashLine> as a
+ * do nothing option?) for if #line appears in normal code.
+ * Based on a file written by Ben Hart and Mike Joy.
+ *
+ * @author Daniel White
+ * @version 12 July 2000
+ */
+options {
+  IGNORE_CASE = true;
+  JAVA_UNICODE_ESCAPE = true;
+  STATIC = false;
+}
+
+PARSER_BEGIN(SentenceParser)
+
+package uk.ac.warwick.dcs.cobalt.sherlock.freetext;
+
+import java.io.*;
+import java.util.Date;
+
+/**
+ * Parses a source-code file and places all the comments into sentence objects
+ * which are in turn held by a document object.
+ */
+public class SentenceParser {
+
+  /**
+   * The stream used to save the output file.
+   */
+  static ObjectOutputStream save;
+
+  static Document currentDoc = new Document();
+  static Sentence currentSentence;
+  static String[] sentEnders = {".","?","!",";",":"};
+
+  /**
+   * The new file containing the output of this tokeniser.
+   */
+  static File outputFile = null;
+  static boolean justStartedSentence = false;
+
+  /**
+   * Keep track of the line number from the file read in. Used to print #line xxx in the outputFile.
+   */
+  static int lineNo = 1;
+
+  static String docName = "";
+
+  /**
+   * Reinitialise all the variables, and get on with parsing the whatever's in the input stream.
+   *
+   * @param is - the input stream to parse.
+   * @param f - the file to save the results of this tokeniser to.
+   */
+  public static void ReInit(InputStream is, File f, String docName) {
+    SentenceParser.currentDoc = new Document();
+    SentenceParser.currentSentence = null;
+    SentenceParser.outputFile = f;
+    SentenceParser.lineNo = 1;
+    SentenceParser.docName = docName;
+  //  SentenceParser.ReInit(is);
+  } // ReInit
+
+  public void setOutput(File f, String docName){
+    SentenceParser.currentDoc = new Document();
+    SentenceParser.currentSentence = null;
+    SentenceParser.outputFile = f;
+    SentenceParser.lineNo = 1;
+    SentenceParser.docName = docName;
+  }
+
+
+  public static void main(String args[]) throws ParseException {
+    SentenceParser parser = new SentenceParser(System.in);
+    parser.Input();
+    Document doc = SentenceParser.currentDoc;
+    System.out.println(doc);
+  }
+}
+PARSER_END(SentenceParser)
+
+
+TOKEN_MGR_DECLS : {
+  static int endCol, startCol;
+  static int lastIndex = -1;
+
+  void wordParsed() {
+    if(SentenceParser.justStartedSentence){
+      SentenceParser.justStartedSentence = false;
+      startCol = input_stream.getBeginColumn();
+      SentenceParser.currentSentence =
+        SentenceParser.currentDoc.startSentence(SentenceParser.lineNo,
+          startCol + image.lastIndexOf("."));
+    }
+    SentenceParser.currentSentence.addWord(image.toString());
+}
+}
+
+TOKEN : {
+  <singleLineComment: "//" > {
+    SentenceParser.justStartedSentence = true;
+  } : inSingleLineComment
+}
+
+TOKEN : {
+  <newLine : "\r\n" | "\r" | "\n">
+}
+
+TOKEN : {
+  // Obviously there are combinations here which don't make sense in that
+  // no-one would ever use them, but it doesn't have to be pinpoint accurate.
+  <sentEnd : (<endBracket> | "'" | "\"" )* ("." | "?" | "!" | ";" | ":" ) ("'" | "\"" | " ")*>
+  | <endBracket : (<number>)* (")" | "]" | "}") >
+}
+
+<inSingleLineComment> SKIP : {
+  < <newLine> > {
+    SentenceParser.lineNo++;
+    endCol = input_stream.getEndColumn();
+    if(SentenceParser.currentSentence != null && SentenceParser.justStartedSentence != true)
+        SentenceParser.currentDoc.endSentence(SentenceParser.lineNo-1, endCol);
+
+    SentenceParser.justStartedSentence = true;
+  } : DEFAULT
+|
+  < <word>"."<word> > {
+    wordParsed();
+  }
+|
+/*  < <word><sentEnd> > {
+    if(SentenceParser.justStartedSentence || SentenceParser.currentSentence == null){
+      startCol = input_stream.getBeginColumn();
+      SentenceParser.currentSentence =
+        SentenceParser.currentDoc.startSentence(SentenceParser.lineNo,
+          startCol);
+    }
+    lastIndex = -1;
+    for(int i = 0; i<SentenceParser.sentEnders.length; i++){
+      lastIndex = image.lastIndexOf(SentenceParser.sentEnders[i]);
+      // This will evaluate to true once because the <sentEnd> token is in image.
+      if(lastIndex != -1)
+        break;
+    }
+    SentenceParser.currentSentence.addWord(
+        image.substring(0, lastIndex));
+
+    if(SentenceParser.currentSentence != null)
+      SentenceParser.currentDoc.endSentence(SentenceParser.lineNo,
+        input_stream.getEndColumn());
+    SentenceParser.justStartedSentence = true;
+  } : inSingleLineComment
+|*/
+  < <word> > {
+    wordParsed();
+  } : inSingleLineComment
+|
+  < <sentEnd> > {
+    if(SentenceParser.currentSentence != null && !SentenceParser.justStartedSentence)
+      SentenceParser.currentDoc.endSentence(SentenceParser.lineNo,
+        input_stream.getEndColumn());
+    SentenceParser.justStartedSentence = true;
+  } : inSingleLineComment
+|
+  < <others> > {
+        // Do Nothing.
+  } : inSingleLineComment
+}
+
+TOKEN : {
+  <formalComment : "/**" ~["/"]> {
+    SentenceParser.justStartedSentence = true;
+    input_stream.backup(1);
+  } : inFormalOrMultiLineComment
+}
+
+TOKEN : {
+  <multiLineComment : "/*" > {
+    SentenceParser.justStartedSentence = true;
+  } : inFormalOrMultiLineComment
+}
+
+<inFormalOrMultiLineComment> SKIP : {
+  <endFormalOrMultiLineComment : "*/" > {
+    endCol = input_stream.getBeginColumn();
+    if(SentenceParser.currentSentence != null && SentenceParser.justStartedSentence != true)
+      SentenceParser.currentDoc.endSentence(SentenceParser.lineNo, endCol);
+
+    SentenceParser.justStartedSentence = true;
+  } : DEFAULT
+|
+  < <newLine> > {
+    SentenceParser.lineNo++;
+  } : inFormalOrMultiLineComment
+|
+  < <word>"."<word> > {
+    wordParsed();
+  }
+|
+/*  < <word><sentEnd> > {
+    if(SentenceParser.justStartedSentence || SentenceParser.currentSentence == null){
+      startCol = input_stream.getBeginColumn();
+      assert (startCol == input_stream.getEndColumn()-image.length());
+      SentenceParser.currentSentence =
+        SentenceParser.currentDoc.startSentence(SentenceParser.lineNo,
+          startCol);
+    }
+    lastIndex = -1;
+    for(int i = 0; i<SentenceParser.sentEnders.length; i++){
+      lastIndex = image.lastIndexOf(SentenceParser.sentEnders[i]);
+      // This will evaluate to true once because the <sentEnd> token is in image.
+      if(lastIndex != -1)
+        break;
+    }
+    SentenceParser.currentSentence.addWord(
+        image.substring(0, lastIndex));
+
+
+    endCol = input_stream.getEndColumn();
+    SentenceParser.currentDoc.endSentence(SentenceParser.lineNo,
+      endCol);
+    SentenceParser.justStartedSentence = true;
+  }
+|*/
+  < <word> > {
+    wordParsed();
+  } : inFormalOrMultiLineComment
+|
+  < <sentEnd> > {
+    if(SentenceParser.currentSentence != null && !SentenceParser.justStartedSentence)
+      SentenceParser.currentDoc.endSentence(SentenceParser.lineNo,
+        input_stream.getEndColumn());
+    SentenceParser.justStartedSentence = true;
+  }
+|
+  < <others> > {
+    // Do nothing
+  } : inFormalOrMultiLineComment
+}
+
+TOKEN : {
+  <hashLine : "#line ">
+| <number : ( ["0" - "9"] ) +>
+}
+
+TOKEN : {
+  // The weird construction of this expression is so that words
+  // like contractions (eg. it's or I'm) will be kept
+  // together on a line.
+  // I've allowed a word ending in a dash to be a seperate word for now
+  // but later I should make it so that it concatenates the word on the
+  // next line.
+  <word : (<subword>)+ ((["'"])+ (<subword>)+)* ("-")* >
+| <#subword :["A"-"Z", "a"-"z", "-"](["A"-"Z", "a"-"z", "0"-"9", "-"])* >
+| <space : ( [" "] )+ >
+}
+TOKEN : {
+  <others : ~[] >
+|
+< character_literal:
+      "'"
+      (   (~["'","\\","\n","\r"])
+        | ("\\"
+            ( ["n","t","b","r","f","\\","'","\""]
+            | ["0"-"7"] ( ["0"-"7"] )?
+            | ["0"-"3"] ["0"-"7"] ["0"-"7"]
+            )
+          )
+      )
+      "'"
+  >
+|
+  < string_literal:
+      "\""
+      (   (~["\"","\\","\n","\r"])
+        | ("\\"
+            ( ["n","t","b","r","f","\\","'","\""]
+            | ["0"-"7"] ( ["0"-"7"] )?
+            | ["0"-"3"] ["0"-"7"] ["0"-"7"]
+            )
+          )
+      )*
+      "\""
+  >
+}
+/**
+ * Handle any tokens during the input.
+ */
+void anyOldLines () : {
+}
+{
+  <singleLineComment>
+|
+  <formalComment>
+|
+  <multiLineComment>
+|
+  <hashLine><number> {
+      lineNo = Integer.parseInt(getToken(0).image);
+    // The newLine after will incorrectly add 1 to the line count, so correct this in advance.
+    // Must remember, the number refers to the original number of the *following* line.
+    lineNo--;
+    }
+|
+  <newLine> {
+      lineNo++;
+    }
+| <number> | <word> | <space> | <character_literal> | <string_literal>
+| <others> | <sentEnd> | <endBracket> // Do nothing.
+}
+
+
+void Input () : {
+
+  try {
+    if (outputFile!= null)
+      save = new ObjectOutputStream(
+                             new FileOutputStream(outputFile));
+    else{
+      File f = new File(System.getProperty("user.home"), "testing");
+      save = new ObjectOutputStream(
+                             new FileOutputStream(f));
+    }
+  } catch (IOException e) {
+      Date day = new Date(System.currentTimeMillis());
+      if (outputFile != null) {
+        try {
+            String file = new String
+                (System.getProperty("user.home") + File.pathSeparator
+                 + "sherlock.log");
+            BufferedWriter bw = new BufferedWriter
+                (new FileWriter(file, true));
+            bw.write(day + "-" + "Cannot write to: "
+                     + outputFile.getAbsolutePath());
+            bw.newLine();
+            bw.close();
+        }
+        catch (IOException e2) {
+            if (outputFile != null)
+                System.err.println(day + "-" + "Cannot write to: "
+                                   + outputFile.getAbsolutePath());
+        }
+      }
+      else System.err.println(day + "-" + "Cannot write to System.out");
+      return;
+  }
+}
+{
+  (anyOldLines())* <EOF> {
+    // Tidy the document object
+    SentenceParser.currentDoc.finishedParsing();
+    SentenceParser.currentDoc.setFileName(SentenceParser.docName);
+    try{
+      // Write it to the output file.
+      save.writeObject(SentenceParser.currentDoc);
+
+      // Finish up.
+      save.flush();
+      save.close();
+    } catch(IOException ioe){
+      System.err.println("Error writing to file "+SentenceParser.outputFile);
+    }
+  }
+}
+

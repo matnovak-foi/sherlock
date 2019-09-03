@@ -1,0 +1,50 @@
+<html>
+<body>
+<h1>Stage Three: Examine Results</h1>
+When detection process is finished, each match is stored into two ways:
+a tree and a weighted graph for different views of the results.
+<p>
+<h3>EXAMINE THE STORED MATCHED</h3>
+<p>
+"Examine stored matches" gives the result in a two levels tree.
+The root is the source directory
+and the first level is the all the file names of the matched pair
+and the leaves are the matches of the paired files of their parent node.
+<br>
+<br>
+<h3>Matched Tree</h3>
+<IMG SRC="./snapshot/DisplayStoredMatches.png" alt="Matched Tree"><br>
+<br>
+<br>
+The percentage column shows how long this run of lines is as a percentage of the whole file size:
+if the two files are exactly the same, this figure should be 100%.
+<p>
+The range of the matches are given by their line numbers
+<p>
+The checkbox on the rightmost can be marked and saved for any suspicious pairs individually or
+as a group.
+<p>
+
+To examine the suspicious sections of the submissions,<br>
+-Double clicking on the row of the leaves that you want to examine.
+Then a compare Pane Window will pop up.
+<p>
+
+<h3>EXAMINE THE GRAPH</h3>
+<IMG SRC="./snapshot/MatchGraph.png" alt="Match Graph"><br>
+The data can also be explored using the graph produced by "view matches graph".
+Each node represents one submission.
+An edge means there is at least one match between these two submissions
+The colour of the connecting edges are related to the summed percentage figure
+over all the matches found for this pair of submissions. Different connected
+components will be shown in different groups in this Match Graph view.
+<p>
+Viewing the details of the (perhaps multiple) matches<br>
+-Move the mouse over an edge or a vertex will show the detail of the
+matches/vertex in the status bar at the bottom of the window
+-Left mouse click on an edge will bring up a menu showing all the matches found
+for this pair, each menu item links to the compare panel, in which the match is
+shown. Right mouse click will bring up a different menu, which allows the user
+to mark individual matches for this pair as suspicious or innocent.<br>
+</body>
+</html>

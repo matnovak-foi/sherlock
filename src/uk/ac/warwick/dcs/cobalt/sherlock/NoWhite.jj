@@ -1,0 +1,185 @@
+/*
+ * Copyright � 1999-2000 The University of Warwick. All Rights Reserved.
+ */
+
+/**
+ * JavaCC source for a whitespace compressor.
+ *
+ * @author Ben Hart
+ * @author Mike Joy
+ * @author Weiliang Zhang
+ * @version 2nd Aug 2002
+ */
+
+options {
+  IGNORE_CASE = true;
+  //STATIC = false;
+}
+
+PARSER_BEGIN(NoWhite)
+
+package uk.ac.warwick.dcs.cobalt.sherlock;
+
+import java.io.*;
+import java.util.Date;
+
+class NoWhite {
+
+  /**
+   * The stream used to save the output file.
+   */
+  static PrintStream save;
+
+  /**
+   * The new file containing the output of this tokeniser.
+   */
+  static File outputFile = null;
+
+  /**
+   * Keep track of the line number from the file read in. Used to print #line xxx in the outputFile.
+   */
+  static int lineNo = 1;
+
+  /**
+   * If true, then have not encountered any non-whitespace characters (newLine, space, tab) on this line
+   * so far, so don't print any whitespace characters yet.
+   * If false, then have found some non-whitespace characters, so can safely print whitespace characters.
+   */
+  static boolean atStartOfLine = true;
+
+  /**
+   * If true then we have skipped a line because it was blank and should print #line xxx before continuing.
+   */
+  static boolean justSkippedALine = false;
+
+  /**
+   * Reinitialise all the variables, and get on with parsing the whatever's in the input stream.
+   *
+   * @param is - the input stream to parse.
+   * @param f - the file to save the results of this tokeniser to.
+   */
+  static void ReInit(InputStream is, File f) {
+    // Don't need to reinitialise the PrintStream, it's done for us.
+    NoWhite.ReInit(is);
+    NoWhite.outputFile = f;
+    NoWhite.lineNo=1;
+    NoWhite.atStartOfLine = true;
+    NoWhite.justSkippedALine = false;
+  } // ReInit
+
+
+  /**
+   * Print the current line number into the new file - if we have just skipped a line.
+   */
+  static void printLineNo() {
+    if (justSkippedALine) {
+      save.println("#line " + lineNo);
+      justSkippedALine = false;
+    }
+  } // printLineNo
+
+
+  static void main(String args[]) throws ParseException {
+    NoWhite parser = new NoWhite(System.in);
+    parser.Input();
+  }
+
+}
+PARSER_END(NoWhite)
+
+TOKEN_MGR_DECLS : {
+}
+
+TOKEN : {
+  <hashLine : "#line ">
+}
+
+TOKEN : {
+  <number : ( ["0" - "9"] ) + >
+}
+
+TOKEN : {
+  <newLine : "\r\n" | "\r" | "\n">
+}
+
+TOKEN : {
+  <space : " ">
+}
+
+TOKEN : {
+  <tab : "\t">
+}
+
+TOKEN : {
+  <others : ~[] >
+}
+
+void anyOldLines () : {
+}
+{
+  <hashLine><number> {
+    lineNo = Integer.parseInt(getToken(0).image);
+    // The newLine after will incorrectly add 1 to the line count, so correct this in advance.
+    // Must remember, the number refers to the original number of the *following* line.
+    lineNo--;
+  }
+|
+  ( <space> | <tab> ) {
+    if (!atStartOfLine)
+      save.print(" ");
+    }
+|
+  <newLine> {
+    if (!atStartOfLine) {
+      save.println();
+      atStartOfLine = true;
+    }
+    else {
+      justSkippedALine = true;
+    }
+    lineNo++;
+  }
+|
+  (<others> | <number>) {
+    printLineNo();
+    save.print(token.image);
+    atStartOfLine = false;
+  }
+}
+
+void Input () : {
+  try {
+    if (outputFile!=null)
+      save = new PrintStream(new FileOutputStream(outputFile));
+    else
+      save = System.out;
+  } catch (IOException e) {
+      Date day = new Date(System.currentTimeMillis());
+      if (outputFile != null) {
+        try {
+            String file = new String
+                (System.getProperty("user.home") + Settings.fileSep
+                 + "sherlock.log");
+            BufferedWriter bw = new BufferedWriter
+                (new FileWriter(file, true));
+            bw.write(day + "-" + "Cannot write to: "
+                     + outputFile.getAbsolutePath());
+            bw.newLine();
+            bw.close();
+        }
+        catch (IOException e2) {
+            if (outputFile != null)
+                System.err.println(day + "-" + "Cannot write to: "
+                                   + outputFile.getAbsolutePath());
+        }
+      }
+      else System.err.println(day + "-" + "Cannot write to System.out");
+      return;
+  }
+}
+{
+  (anyOldLines())* <EOF> {
+    save.flush();
+    save.close();
+  }
+ }

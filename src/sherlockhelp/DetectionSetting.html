@@ -1,0 +1,44 @@
+<html>
+<body>
+<h1>Detection Setting Parameters (match sensitivity)</h1>
+<p>
+These settings affect the source-code detection algorithms.
+<p>
+Sherlock allows different levels of matching sensitivity
+between pair of submissions for each line and region
+(a region being several continuous lines of coding).
+Each pre-processing file type can have its own matching sensitivity
+by changing the detection settings individually.
+<p>
+Before start the comparisons<br>
+-Click the "Pre-process File" button or "Start complete search..." in the detection section<br>
+-and click the desired the file type name in the tabbed pane<br>
+-Then change the values in the text box.
+<UL>
+<LI><B>Minimum String Length to Store</B>: Lines which have less characters than
+this number will be ignored.
+<LI><B>Minimum Run Length to Store</B>: Runs shorter than this number will be
+ignored.
+<LI><B>Maximum Forward Jump</B>: How far to look forward for a matching line
+when one pair of lines has matched.
+<LI><B>Maximum Backward Jump</B>: How far to look backward for a matching line
+when one pair of lines has matched.
+<LI><B>Maximum Jump Difference</B>: How much the jumps in the two different
+files can vary in length.
+<LI><B>Strictness</B>: How strict the algorithm is.
+<LI><B>Amalgamate Nearby Runs</B>: Whether overlapping runs should be made into
+one bigger run.
+<LI><B>Concatenate Nearby Runs</B>: Whether runs which are close together should
+be concatenated.
+</UL>
+<p>
+All the default setting values can be re-obtained by clicking "Restore defaults".
+<p>
+
+<br>
+<h3> Detection Setting Parameter Window for changing the matching sensitivity </h3>
+<IMG SRC="./snapshot/DetectionSettingParam.png" alt="Detection Setting Parameter (matched sensitivity)"><br>
+<p>
+
+</body>
+</html>

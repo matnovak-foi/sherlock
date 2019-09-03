@@ -1,0 +1,34 @@
+<html>
+<body>
+<h1>Stage One: Input Source Directory</h1>
+<p>
+A source directory containing submissions is required as an input. Sherlock
+requires read and write privileges on this directory as the results of the
+pre-processing and detection stages will be stored there.
+<p>
+The source directory should be composed as follows:<br>
+<ul>
+<li>The directory should contain either a set of source-code submissions or
+a set of natural language submissions.
+<li>These files should all be in a plain text format. If the files are intended
+for natural language detection they should also be surrounded by Java comment
+braces. For example, '/*' should appear on the top line and '*/' on the bottom.
+This is a temporary measure and should not be require in future versions.
+<li>The files may be organised so that they are all in the same directory, or
+you may place them in sub-directories.
+<li> If they are in sub-directories, you should accept Sherlock's offer to
+rename them before it starts pre-processing. This will ensure that no two
+files have the same name. The renaming need only be done the first time you
+use Sherlock; if detection is run a second time, the renaming will not be
+needed.
+</ul>
+<p>
+-Press the "Choose source directory..." button in the "Source directory" section<br>
+ or select "Choose sourse directory" in the File menu.<br>
+-Browse and select the directory or enter the path of the directory<br>
+-Press "OK" button to confirm
+<p>
+<h3>Input Source Directory</h3>
+<IMG SRC="./snapshot/InputSource.png" alt="Input Source Directory by Button"><br>
+</body>
+</html>

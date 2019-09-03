@@ -1,0 +1,773 @@
+/*
+ * Copyright � 1999-2000 The University of Warwick. All Rights Reserved.
+ */
+
+
+/**
+ * JavaCC source for a C++ tokeniser.
+ *
+ * @author Ben Hart
+ * @author Mike Joy
+ * @author Weiliang Zhang
+ * @version 7 Aug 2002
+ */
+
+options {
+  IGNORE_CASE=true;
+  //STATIC = false;
+}
+
+PARSER_BEGIN(cplusplus)
+
+package uk.ac.warwick.dcs.cobalt.sherlock;
+
+import java.io.*;
+import java.util.Date;
+
+class cplusplus {
+
+  /**
+   * The stream used to save the output file.
+   */
+  static PrintStream save;
+
+  /**
+   * The new file containing the output of this tokeniser.
+   */
+  static File outputFile = null;
+
+  /**
+   * Keep track of the line number from the file read in. Used to print #line xxx in the outputFile.
+   */
+  static int lineNo = 1;
+
+  static boolean print=false;
+  static boolean seenNewLine=false;
+
+  /**
+   * Reinitialise all the variables, and get on with parsing the whatever's in the input stream.
+   *
+   * @param is - the input stream to parse.
+   * @param f - the file to save the results of this tokeniser to.
+   */
+  static void ReInit(InputStream is, File f) {    
+    // Don't need to reinitialise the PrintStream, it's done for us.
+    cplusplus.outputFile = f;
+    cplusplus.lineNo=1;
+
+    cplusplus.seenNewLine=false;
+    cplusplus.print=false;
+
+    cplusplus.ReInit(is);
+  } // ReInit
+
+
+  /**
+   * Print the current line number into the new file.
+   */
+  static void printLineNo() {
+    if (print) {
+      save.println();
+      save.print("#line "+lineNo);
+      print = false;
+    }
+  } // printLine
+
+
+  /**
+   * Print the passed string into the new file.
+   *
+   * @param stringToPrint the string to print.
+   */
+  static void toPrint(String stringToPrint) {
+    printLineNo();
+    if (seenNewLine)
+      save.println();
+    seenNewLine = false;
+    save.print(stringToPrint);
+  } // toPrint
+
+
+  public static void main(String args[]) throws ParseException {
+    cplusplus parser = new cplusplus(System.in);
+    parser.Input();
+  }
+
+} // cplusplus
+PARSER_END(cplusplus)
+
+TOKEN_MGR_DECLS : {
+}
+
+/* Basic Blocks */
+TOKEN : {
+  <newLine : "\n" | "\r" | "\r\n"> {
+    cplusplus.lineNo++;
+    if (cplusplus.seenNewLine)
+      cplusplus.print=true;
+    cplusplus.seenNewLine=true;
+  }
+}
+
+TOKEN : {
+  <hashLine : "#line ">
+}
+
+
+/*
+ * Comments - remove them.
+ */
+TOKEN : {
+  <singleLineComment : "//"> {
+    cplusplus.toPrint("<IN_LINE_COMMENT>");
+    cplusplus.print = true;
+  } : inSingleLineComment
+}
+
+TOKEN : {
+  <multiLineComment : "/*"> {
+    cplusplus.toPrint("<MULTI_LINE_COMMENT>");
+    cplusplus.print = true;
+  } : inAnyMultiLineComment
+}
+
+<inSingleLineComment> SKIP : {
+  < <newLine> > {
+    cplusplus.lineNo++;
+    cplusplus.seenNewLine = true;
+  } : DEFAULT
+}
+
+<inAnyMultiLineComment> SKIP : {
+  < <newLine> > {
+    cplusplus.lineNo++;
+  } : inAnyMultiLineComment
+|
+  <endAnyMultiLineComment : "*/"> {
+  } : DEFAULT
+}
+
+<inSingleLineComment, inAnyMultiLineComment> SKIP : {
+  < ~[] >
+}
+
+
+/**
+ * Reserved Words
+ */
+TOKEN : {
+  < GOTO: "goto" > {
+    cplusplus.toPrint("<RSVD>");
+  } // Not used - reserved
+}
+
+/**
+ * Types
+ */
+TOKEN : {
+  < TYPE: "boolean" | "byte" | "char" | "double" | "void" | "long" | "String" > {
+    cplusplus.toPrint("<TYPE>");
+  }
+}
+
+/**
+ * Literals
+ */
+TOKEN : {
+  < AUTO: "auto" > {
+    cplusplus.toPrint("<AUTO>");
+  }
+|
+  < BREAK: "break" > {
+    cplusplus.toPrint("<BREAK>");
+  }
+|
+  < CASE: "case" > {
+    cplusplus.toPrint("<CASE>");
+  }
+|
+  < CATCH: "catch" > {
+    cplusplus.toPrint("<CATCH>");
+  }
+|
+  < CLASS: "class" > {
+    cplusplus.toPrint("<CLASS>");
+  }
+|
+  < CONTINUE: "continue" > {
+    cplusplus.toPrint("<BREAK>");
+  }
+|
+  < _DEFAULT: "default" > {
+    cplusplus.toPrint("<CASE>");
+  }
+|
+  < DELETE: "delete" > {
+    cplusplus.toPrint("<DELETE>");
+  }
+|
+  < DO: "do" > {
+    cplusplus.toPrint("<LOOP>");
+  }
+|
+  < ELSE: "else" > {
+    cplusplus.toPrint("<IF>");
+  }
+|
+  < ENUM: "enum" > {
+    cplusplus.toPrint("<ENUM>");
+  }
+|
+  < EXTERN: "extern" > {
+    cplusplus.toPrint("<EXTERN>");
+  }
+|
+  < FALSE: "false" > {
+    cplusplus.toPrint("<BOOL>");
+  }
+|
+  < FINALLY: "finally" > {
+    cplusplus.toPrint("<FINALLY>");
+  }
+|
+  < FLOAT: "float" > {
+    cplusplus.toPrint("<TYPE>");
+  }
+|
+  < FOR: "for" > {
+    cplusplus.toPrint("<LOOP>");
+  }
+|
+  < FRIEND: "friend" > {
+    cplusplus.toPrint("<FRIEND>");
+  }
+|
+  < IF: "if" > {
+    cplusplus.toPrint("<IF>");
+  }
+|
+  < IMPLEMENTS: "implements" > {
+    cplusplus.toPrint("<MODIFIER>");
+  }
+|
+  < IMPORT: "import" > {
+    cplusplus.toPrint("<IMPORT>");
+  }
+|
+  < INLINE: "inline" > {
+    cplusplus.toPrint("<INLINE>");
+  }
+|
+  < INT: "int" > {
+    cplusplus.toPrint("<TYPE>");
+  }
+|
+  < INTERFACE: "interface" > {
+    cplusplus.toPrint("<MODIFIER>");
+  }
+|
+  < NATIVE: "native" > {
+    cplusplus.toPrint("<NATIVE>");
+  }
+|
+  < NEW: "new" > {
+    cplusplus.toPrint("<NEW>");
+  }
+|
+  < NULL: "null" > {
+    cplusplus.toPrint("<NULL>");
+  }
+|
+  < PACKAGE: "package"> {
+    cplusplus.toPrint("<PACKAGE>");
+  }
+|
+  < REDECLARED: "redeclared" > {
+    cplusplus.toPrint("<REDECLARED>");
+  }
+|
+  < REGISTER: "register" > {
+    cplusplus.toPrint("<REGISTER>");
+  }
+|
+  < RETURN: "return" > {
+    cplusplus.toPrint("<RETURN>");
+  }
+|
+  < SHORT: "short" > {
+    cplusplus.toPrint("<TYPE>");
+  }
+|
+ < SIGNED: "signed" > {
+    cplusplus.toPrint("<SIGNED>");
+  }
+|
+  < SIZEOF: "sizeof" > {
+    cplusplus.toPrint("<SIZEOF>");
+  }
+|
+  < STATIC: "static" > {
+    cplusplus.toPrint("<STATIC>");
+  }
+|
+  < STRUCT: "struct" > {
+    cplusplus.toPrint("<STRUCT>");
+  }
+|
+  < SUPER: "super" > {
+    cplusplus.toPrint("<SUPER>");
+  }
+|
+  < SWITCH: "switch" > {
+    cplusplus.toPrint("<CASE>");
+  }
+|
+  < THIS: "this." > {
+    cplusplus.toPrint("");  }
+|
+  < THROW: "throw" > {
+    cplusplus.toPrint("<TRY>");
+  }
+|
+  < TRUE: "true" > {
+    cplusplus.toPrint("<BOOL>");
+  }
+|
+  < TRY: "try" > {
+    cplusplus.toPrint("<TRY>");
+  }
+|
+  < UNION: "union" > {
+    cplusplus.toPrint("<UNION>");
+  }
+|
+  < UNSIGNED: "unsigned" > {
+    cplusplus.toPrint("<UNSIGNED>");
+  }
+|
+  < VIRTUAL: "virtual" > {
+    cplusplus.toPrint("<VIRTUAL>");
+  }
+|
+  < WHILE: "while" > {
+    cplusplus.toPrint("<LOOP>");
+  }
+}
+
+/**
+ * Modifiers
+ */
+TOKEN : {
+  < MODIFIERS : "abstract" | "final" | "private" | "protected" | "public" | "static" | "synchronized" | "throw" | "volatile" | "const"> {
+    cplusplus.toPrint("<MODIFIER>");
+  }
+}
+
+/**
+ * Identifiers
+ */
+TOKEN : {
+  < IDENTIFIER: ( <LETTER> ) | ( <LETTER> (<LETTER>|<DIGIT>)* ) > {
+    cplusplus.toPrint("<IDT>");
+  }
+|
+  < #LETTER: ["a"-"z","A"-"Z","_","$"] >
+|
+  < #DIGIT: ["0"-"9"] >
+}
+
+/**
+ * Number Literals.
+ */
+TOKEN : {
+  < INTEGER_LITERAL: <DECIMAL_LITERAL> (["l","L"])? | <HEX_LITERAL> (["l","L"])? | <OCTAL_LITERAL> (["l","L"])? > {
+    cplusplus.toPrint("<VALUE>"); // This is gonna break #lines
+  }
+|
+  < #DECIMAL_LITERAL: ["1"-"9"] (["0"-"9"])* >
+|
+  < #HEX_LITERAL: "0" ["x","X"] (["0"-"9","a"-"f","A"-"F"])+ >
+|
+  < #OCTAL_LITERAL: "0" (["0"-"7"])* >
+|
+
+  < FLOATING_POINT_LITERAL:
+        (["0"-"9"])+ "." (["0"-"9"])* (<EXPONENT>)? (["f","F","d","D"])?
+      | "." (["0"-"9"])+ (<EXPONENT>)? (["f","F","d","D"])?
+      | (["0"-"9"])+ <EXPONENT> (["f","F","d","D"])?
+      | (["0"-"9"])+ (<EXPONENT>)? ["f","F","d","D"] > {
+    cplusplus.toPrint("<VALUE>");
+  }
+|
+  < #EXPONENT: ["e","E"] (["+","-"])? (["0"-"9"])+ >
+|
+  < CHARACTER_LITERAL:
+      "'"
+      (   (~["'","\\","\n","\r"])
+        | ("\\"
+            ( ["n","t","b","r","f","\\","'","\""]
+            | ["0"-"7"] ( ["0"-"7"] )?
+            | ["0"-"3"] ["0"-"7"] ["0"-"7"]
+            )
+          )
+      )
+      "'" > {
+    cplusplus.toPrint("<VALUE>");
+  }
+|
+  < STRING_LITERAL:
+      "\""
+      (   (~["\"","\\","\n","\r"])
+        | ("\\"
+            ( ["n","t","b","r","f","\\","'","\""]
+            | ["0"-"7"] ( ["0"-"7"] )?
+            | ["0"-"3"] ["0"-"7"] ["0"-"7"]
+            )
+          )
+      )*
+      "\"" > {
+    cplusplus.toPrint("<VALUE>");
+  }
+}
+
+/**
+ * Separators
+ */
+TOKEN : {
+  < LPAREN: "(" > {
+    cplusplus.toPrint("(");
+  }
+|
+  < RPAREN: ")" > {
+    cplusplus.toPrint(")");
+  }
+|
+  < LBRACE: "{" > {
+    cplusplus.toPrint("{");
+  }
+|
+  < RBRACE: "}" > {
+    cplusplus.toPrint("}");
+  }
+|
+  < LBRACKET: "[" > {
+    cplusplus.toPrint("[");
+  }
+|
+  < RBRACKET: "]" > {
+    cplusplus.toPrint("]");
+  }
+|
+  < SEMICOLON: ";" > {
+    cplusplus.toPrint("");
+  }
+|
+  < COMMA: "," > {
+    cplusplus.toPrint(",");
+  }
+|
+  < DOT: "." > {
+    cplusplus.toPrint(".");
+  }
+|
+  < QUESTIONMARK: "?" > {
+    cplusplus.toPrint("?");
+  }
+|
+  < ELLIPSIS: "..." > {
+    cplusplus.toPrint("...");
+  }
+}
+
+/**
+ * Operators.
+ */
+TOKEN : {
+  < ASSIGN: "=" > {
+    cplusplus.toPrint("=");
+  }
+|
+  < GT: ">" > {
+    cplusplus.toPrint("==");
+  }
+|
+  < LT: "<" > {
+    cplusplus.toPrint("==");
+  }
+|
+  < BANG: "!" > {
+    cplusplus.toPrint("");
+  }
+|
+  < TILDE: "~" > {
+    cplusplus.toPrint("~");
+  }
+|
+  < SCOPE: "::" > {
+    cplusplus.toPrint("::");
+  }
+|
+  < COLON: ":" > {
+    cplusplus.toPrint(":");
+  }
+|
+  < EQ: "==" > {
+    cplusplus.toPrint("==");
+  }
+|
+  < LE: "<=" > {
+    cplusplus.toPrint("==");
+  }
+|
+  < GE: ">=" > {
+    cplusplus.toPrint("==");
+  }
+|
+  < NE: "!=" > {
+    cplusplus.toPrint("==");
+  }
+|
+  < SC_OR: "||" > {
+    cplusplus.toPrint("&&");
+  }
+|
+  < SC_AND: "&&" > {
+    cplusplus.toPrint("&&");
+  }
+|
+  < INCR: "++" > {
+    cplusplus.toPrint("+=<NUM>");
+  }
+|
+  < DECR: "--" > {
+    cplusplus.toPrint("-=<NUM>");
+  }
+|
+  < PLUS: "+" > {
+    cplusplus.toPrint("+");
+  }
+|
+  < MINUS: "-" > {
+    cplusplus.toPrint("-");
+  }
+|
+  < STAR: "*" > {
+    cplusplus.toPrint("*");
+  }
+|
+  < SLASH: "/" > {
+    cplusplus.toPrint("/");
+  }
+|
+  < BIT_AND: "&" > {
+    cplusplus.toPrint("&");
+  }
+|
+  < BIT_OR: "|" > {
+    cplusplus.toPrint("&");
+  }
+|
+  < XOR: "^" > {
+    cplusplus.toPrint("&");
+  }
+|
+  < REM: "%" > {
+    cplusplus.toPrint("%");
+  }
+}
+
+TOKEN : {
+  < SHIFT: "<<" | ">>" | ">>>" > {
+    cplusplus.toPrint("<<");
+  }
+}
+
+TOKEN : {
+  < POINTERTO: "->" > {
+    cplusplus.toPrint("->");
+  }
+|
+  < DOTSTAR: ".*" > {
+    cplusplus.toPrint("->");
+  }
+|
+  < ARROWSTAR: "->*" > {
+    cplusplus.toPrint("->");
+  }
+}
+
+TOKEN : {
+  < PLUSASSIGN: "+=" > {
+    cplusplus.toPrint("+=");
+  }
+|
+  < MINUSASSIGN: "-=" > {
+    cplusplus.toPrint("-=");
+  }
+|
+  < STARASSIGN: "*=" > {
+    cplusplus.toPrint("*=");
+  }
+|
+  < SLASHASSIGN: "/=" > {
+    cplusplus.toPrint("/=");
+  }
+}
+
+TOKEN : {
+  < ANDASSIGN: "&=" | "|=" | "^=" > {
+    cplusplus.toPrint("&=");
+  }
+|
+  < REMASSIGN: "%=" > {
+    cplusplus.toPrint("%=");
+  }
+|
+  < SHIFTASSIGN: "<<=" | ">>=" | ">>>=" > {
+    cplusplus.toPrint("<<=");
+  }
+}
+
+/**
+ * White Space
+ */
+SKIP : {
+ <"\f" | " " | "\t">
+}
+
+TOKEN : {
+  <others : ~["a"-"z"] >
+}
+
+void anyOldLines () : {
+}
+{
+  <singleLineComment>
+|
+  <multiLineComment>
+|
+  <hashLine><INTEGER_LITERAL> {
+    seenNewLine=false;
+    lineNo=Integer.parseInt(getToken(0).image);
+    print=true;
+    printLineNo();
+    }
+| < LPAREN >
+| < RPAREN >
+| < LBRACE >
+| < RBRACE >
+| < LBRACKET >
+| < RBRACKET >
+| < SEMICOLON >
+| < COMMA >
+| < DOT >
+| < ASSIGN >
+| < GT >
+| < LT >
+| < BANG >
+| < TILDE >
+| < COLON >
+| < EQ >
+| < LE >
+| < GE >
+| < NE>
+| < SC_OR >
+| < SC_AND >
+| < INCR >
+| < DECR >
+| < PLUS>
+| < MINUS>
+| < STAR>
+| < SLASH>
+| < BIT_AND>
+| < BIT_OR>
+| < XOR>
+| < REM>
+| < SHIFT>
+| < PLUSASSIGN>
+| < MINUSASSIGN>
+| < STARASSIGN>
+| < SLASHASSIGN>
+| < ANDASSIGN>
+| < REMASSIGN>
+| < SHIFTASSIGN>
+| < BREAK >
+| < CASE >
+| < CATCH >
+| < CLASS >
+| < CONTINUE >
+| < _DEFAULT >
+| < DO >
+| < ELSE >
+| < FALSE >
+| < FINALLY >
+| < FLOAT >
+| < FOR >
+| < GOTO >
+| < IF >
+| < IMPLEMENTS >
+| < IMPORT >
+| < INT >
+| < INTERFACE >
+| < NATIVE >
+| < NEW >
+| < MODIFIERS >
+| < NULL >
+| < PACKAGE>
+| < RETURN >
+| < SHORT >
+| < SUPER >
+| < SWITCH >
+| < THIS >
+| < THROW >
+| < TRUE >
+| < TRY >
+| < TYPE >
+| < WHILE >
+| < INTEGER_LITERAL >
+| < FLOATING_POINT_LITERAL >
+| < CHARACTER_LITERAL >
+| < STRING_LITERAL >
+| < IDENTIFIER >
+| <newLine>
+| <others> {
+      if (seenNewLine)
+        cplusplus.save.println();
+      seenNewLine=false;
+      cplusplus.toPrint(token.image);
+    }
+}
+
+void Input () : {
+  try    {
+      if (outputFile!=null)
+        cplusplus.save = new PrintStream(new FileOutputStream(outputFile));
+      else
+        save = System.out;
+  } catch (IOException e) {
+      Date day = new Date(System.currentTimeMillis());
+      if (outputFile != null) {
+        try {
+            String file = new String
+                (System.getProperty("user.home") + Settings.fileSep
+                 + "sherlock.log");
+            BufferedWriter bw = new BufferedWriter
+                (new FileWriter(file, true));
+            bw.write(day + "-" + "Cannot write to: "
+                     + outputFile.getAbsolutePath());
+            bw.newLine();
+            bw.close();
+        }
+        catch (IOException e2) {
+            if (outputFile != null)
+                System.err.println(day + "-" + "Cannot write to: "
+                                   + outputFile.getAbsolutePath());
+        }
+      }
+      else System.err.println(day + "-" + "Cannot write to System.out");
+      return;
+  }
+}
+{
+  (anyOldLines())* <EOF>
+}

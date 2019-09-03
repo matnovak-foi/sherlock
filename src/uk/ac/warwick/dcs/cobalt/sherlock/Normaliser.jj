@@ -1,0 +1,397 @@
+/**
+ * This parser is very language DEPENDENT! Currently, it is customised to parse
+ * and normalise Java source code. It is also easy to modify this code for it
+ * to process C/C++ code.
+ *
+ * @author Weiliang Zhang
+ * @version 16 Aug 2002
+ */
+ 
+/*options {
+  STATIC = false;
+}*/
+
+PARSER_BEGIN(Normaliser)
+
+package uk.ac.warwick.dcs.cobalt.sherlock;
+import java.io.*;
+import java.util.Date;
+
+public class Normaliser {
+  //line number in the original file
+  public static int lineNo = 1;  
+
+  //when counter hits MAX, output line number.
+  private static int counter = 0;
+  private final static int MAX = 10;
+
+  //brackets count only count brackets in the same line.
+  public static int brackets = 0;
+  //indicate at the start of a new line. 
+  private static boolean startOfNewLine = true;
+
+  private static boolean wasspace = false;
+
+  private static File outputFile;
+  
+  public static BufferedWriter out;
+
+  public static void ReInit(InputStream instream, File file) {
+    Normaliser.ReInit(instream);
+    brackets = 0;
+    lineNo = 1;
+    counter = 0;
+    startOfNewLine = true;
+    wasspace=false;
+    outputFile = file;
+  }
+
+  public static void main(String[] args) {
+    if (args.length != 2) {
+      System.err.println("Usage: java Normaliser <inputFile> <outputFile>");
+      System.exit(1);
+    }
+    Normaliser parser = new Normaliser(System.in);
+    try {
+      parser.ReInit(new FileInputStream(new File(args[0])), new File(args[1]));
+      parser.Input();
+    }
+    catch (Exception e) {
+      System.out.println("Exception caught: " + e);
+      e.printStackTrace(System.out);
+      System.exit(2);
+    }
+  }
+
+  public static void write(String s, boolean newline) {
+    if (s.equals(" "))
+      wasspace = true;
+    else wasspace = false;
+    startOfNewLine = newline;
+
+    try {
+      Normaliser.out.write(s);
+      if (newline) {
+	Normaliser.out.newLine();
+
+	//output line number in every 10 not-comment lines in the new file.
+        counter++;
+        if (counter > MAX) {
+          counter = 0;
+          write("#line " + lineNo, true);
+        }
+      }
+    }
+    catch (IOException e) {
+      //System.err.println("IOException caught: " + e);
+      Date day = new Date(System.currentTimeMillis());
+      try {
+          String file = new String
+              (System.getProperty("user.home") + Settings.fileSep
+               + "sherlock.log");
+          BufferedWriter bw = new BufferedWriter
+              (new FileWriter(file, true));
+          bw.write(day + "-" + "Cannot write to: " 
+                   + outputFile.getAbsolutePath());
+          bw.newLine();
+          bw.close();
+      }
+      catch (IOException e2) {
+	  System.err.println(day + "-" + "Cannot write to: "
+                             + outputFile.getAbsolutePath());
+      }
+    }
+  }
+}
+
+PARSER_END(Normaliser)
+
+SKIP : {
+  "\t"
+| "\r"
+| "\f"
+}
+
+//tokens after or before which a new line might need to be inserted.
+TOKEN : {
+  <OPEN_BRACKET : "("> 
+ |<CLOSE_BRACKET : ")"> 
+ |<BRACES : "{" | "}"> 
+ |<SEMICOLON : ";"> 
+ //no space insert around INC_OPT, they have to be defined as tokens otherwise
+ //they will be recognised as two operators.
+ |<INC_OPT : "++" | "--">
+ //do not insert space before NOT_OPT but after.
+ |<NOT_OPT : "!" | "~">
+ //OPERATOR cantains operators which a single space should be force around them
+ |<OPERATOR : "=" | ">" | "<" | "&" |"|" | "^" | "+" | "-" | "*"
+            | "/" | "?" | ":" | "%" | "==" | ">>" | "||" | "&&"
+            | "<<" | ">>>" | "!=" | "+=" | "-=" | "/=" | "*=" | "|=" | "&="
+            | "%=" | "<=" | ">=" | "^=" | ">>=" | "<<=" | ">>>=">
+ |<CAST : "("<GAP><LITERAL><GAP>")">
+ |<#LITERAL : (["A"-"Z","a"-"z","0"-"9"])+>
+ |<#GAP : (" ")* | ("\n")*>
+}
+
+TOKEN : {
+  <LINENO : "#line ">
+| <NUMBER : (["0"-"9"])+>
+}
+
+TOKEN : {
+  <SPACE : (" ")+>
+ |<NEWLINE : "\n">
+ |<DQUOTE : "\"">
+ |<SQUOTE : "'">
+ |<DQUOTE_ESCAPE : "\\\"">
+ |<SQUOTE_ESCAPE : "\\\'">
+ |<OTHER : ~[]> 
+}
+
+TOKEN : {
+  <SINGLECOMMENT : "//"> 
+| <MULTICOMMENTSTART : "/*" | "/**"> 
+| <MULTICOMMENTEND : "*/">
+}
+
+void matchLine() : {
+}
+{
+  <OPEN_BRACKET> {
+    Normaliser.brackets++;
+    Normaliser.write(token.image, false);
+    //consumes all spaces after an open bracket.
+    while (getToken(1).kind == SPACE)
+      getNextToken();
+  } 
+| <CLOSE_BRACKET> {
+    Normaliser.brackets--;
+    Normaliser.write(token.image, false);
+    
+    //consume all spaces and new line characters.
+    while (getToken(1).kind == SPACE)
+      getNextToken();
+
+    //correct syntax is assumed here, ie. no missing ";"s.
+    //if not method call or data access, neither end of one statement
+    //and brackets in the same line are matched, not a new line,
+    //not an operator, not in an array definition, not braces,
+    //print line break.
+    if (!getToken(1).image.equals(".") && getToken(1).kind != SEMICOLON
+	&& Normaliser.brackets == 0 && getToken(1).kind != NEWLINE
+        && getToken(1).kind != OPERATOR && !getToken(1).image.equals("]")
+        && getToken(1).kind != BRACES) 
+        Normaliser.write("", true);
+  }
+| <BRACES> {
+    if (!wasspace && !startOfNewLine)
+      Normaliser.write(" ", false);
+    Normaliser.write(token.image, false);
+    //consumes all spaces followed.
+    while(getToken(1).kind == SPACE)
+      getNextToken();
+
+    if (getToken(1).kind == NEWLINE) {
+      Normaliser.lineNo++;
+      getNextToken();
+    }
+
+    //if a semicolon is followed, print the semicolon and then a new line
+    //if necessary, otherwise, print new line directly.
+    if (getToken(1).kind != SEMICOLON)
+      Normaliser.write("", true);
+  }
+| <SEMICOLON> {
+//    Normaliser.write(token.image, true);
+    //consume the spaces after an operator.
+    while(getToken(1).kind == SPACE || getToken(1).kind == NEWLINE) {
+      if (getToken(1).kind == NEWLINE)
+        Normaliser.lineNo++;
+      getNextToken();
+    }
+    Normaliser.write(";", true);
+  }
+| <INC_OPT> {
+    Normaliser.write(Normaliser.token.image, false);
+    //consume the spaces after an operator.
+    while(Normaliser.getToken(1).kind == SPACE)
+      getNextToken();
+  }
+| <NOT_OPT> {
+    Normaliser.write(Normaliser.token.image + " ", false);
+    //consume the spaces after an operator.
+    while(Normaliser.getToken(1).kind == SPACE)
+      getNextToken();
+  }
+| <OPERATOR> {
+    if (!wasspace)
+      Normaliser.write(" ", false);
+    if (Normaliser.token.image.equals("&&") 
+        || Normaliser.token.image.equals("||"))
+      Normaliser.write("", true);
+    Normaliser.write(Normaliser.getToken(0).image + " ", false);
+    //consume the spaces after an operator.
+    while(Normaliser.getToken(1).kind == SPACE)
+      getNextToken();
+  }
+| <CAST> {
+    StringBuffer modified = new StringBuffer();
+    for (int i = 0; i < token.image.length(); i++) {
+      if (token.image.charAt(i) != ' ' && token.image.charAt(i) != '\n')
+        modified.append(token.image.charAt(i));
+    }
+    Normaliser.write(modified.toString(), false);
+    //consume the spaces after an operator.
+    while(Normaliser.getToken(1).kind == SPACE)
+      getNextToken();
+  }
+| <SPACE> {
+    if (!startOfNewLine && !wasspace
+        && getToken(1).kind != OPERATOR && getToken(1).kind != CLOSE_BRACKET
+        && getToken(1).kind != SEMICOLON)
+      Normaliser.write(" ", false);
+  }
+| <NEWLINE> {
+    Normaliser.lineNo++;
+    while (getToken(1).kind == SPACE || getToken(1).kind == NEWLINE) {
+      if (getToken(1).kind == NEWLINE)
+        Normaliser.lineNo++;
+      getNextToken();
+    }
+
+    if(!wasspace && !startOfNewLine && getToken(1).kind != SEMICOLON
+       && getToken(1).kind != OPEN_BRACKET && getToken(1).kind != CLOSE_BRACKET
+       && !getToken(1).image.equals(".") && !getToken(1).image.equals("[")
+       && !getToken(1).image.equals("]") && getToken(1).kind != BRACES)
+        Normaliser.write(" ", false);
+  }
+//for comments & quotations, skip the content within them. If a closing 
+//quote of comment ending token is missing, leave the content in before the 
+//next one unchanged.
+| <SINGLECOMMENT> {
+  //skip to the next line break. 
+    do {
+      Normaliser.write(token.image, false);
+      getNextToken();
+    } while (token.kind != NEWLINE && token.kind != 0);
+    if (token.kind == NEWLINE)
+      Normaliser.lineNo++;
+    //output a new line
+    Normaliser.write("", true);
+  }
+| <MULTICOMMENTSTART> {
+  //skip to MULTICOMMENTEND
+    while (getToken(1).kind != MULTICOMMENTEND && getToken(1).kind != 0) {
+      Normaliser.write(token.image, false);
+      if (token.kind == NEWLINE)
+        Normaliser.lineNo++;
+      getNextToken();
+    }
+//    //output the MULTICOMMENTEND token.
+//    Normaliser.write(token.image, true);
+
+  }
+//do nothine for MULTICOMMENTEND, it's just defined for simiplicity.
+| <MULTICOMMENTEND> {
+    while (getToken(1).kind == SPACE)
+      getNextToken();
+
+    if (getToken(1).kind == NEWLINE) {
+      Normaliser.lineNo++;
+      getNextToken();
+    }
+
+    Normaliser.write("*/", true);
+  }
+| <SQUOTE> {
+  //skip to end of line or single quote.
+    do {
+      Normaliser.write(token.image, false);
+      getNextToken();
+    } while (token.kind != SQUOTE && token.kind != 0 && token.kind != NEWLINE);
+    if (token.kind == NEWLINE)
+      Normaliser.lineNo++;
+    //output the single quote or new line
+    Normaliser.write(token.image, false);
+  }
+| <DQUOTE> {
+  //skip to end of line or double quote.
+    do {
+      Normaliser.write(token.image, false);
+      getNextToken();
+    } while (token.kind != DQUOTE && token.kind != 0 && token.kind != NEWLINE);
+    if (token.kind == NEWLINE)
+      Normaliser.lineNo++;
+    //output the closing double qoute or new line.
+    Normaliser.write(token.image, false);
+  }
+| <LINENO><NUMBER> {
+    Normaliser.lineNo = Integer.parseInt(token.image);
+  }
+| (<OTHER> | <SQUOTE_ESCAPE> | <DQUOTE_ESCAPE> | <NUMBER>) {
+    Normaliser.write(token.image, false);
+  }
+}
+
+void Input() : {
+  try {
+    if (outputFile != null)
+       Normaliser.out = new BufferedWriter(new FileWriter(outputFile));
+    else Normaliser.out = new BufferedWriter(new OutputStreamWriter
+					       (System.out));
+  }
+  catch (IOException e) {
+      Date day = new Date(System.currentTimeMillis());
+      if (outputFile != null) {
+        try {
+            String file = new String
+                (System.getProperty("user.home") + Settings.fileSep
+                 + "sherlock.log");
+            BufferedWriter bw = new BufferedWriter
+                (new FileWriter(file, true));
+            bw.write(day + "-" + "Cannot write to: "
+                     + outputFile.getAbsolutePath());
+            bw.newLine();
+            bw.close();
+        }
+        catch (IOException e2) {
+            if (outputFile != null)
+                System.err.println(day + "-" + "Cannot write to: "
+                                   + outputFile.getAbsolutePath());
+        }
+      }
+      else System.err.println(day + "-" + "Cannot write to System.out");
+      return;
+  }
+}
+{
+  (matchLine())* <EOF> {
+    try {
+      Normaliser.out.flush();
+      Normaliser.out.close();
+    }
+    catch(IOException e) {
+      Date day = new Date(System.currentTimeMillis());
+      if (outputFile != null) {
+        try {
+            String file = new String
+                (System.getProperty("user.home") + Settings.fileSep
+                 + "sherlock.log");
+            BufferedWriter bw = new BufferedWriter
+                (new FileWriter(file, true));
+            bw.write(day + "-" + "Cannot write to: "
+                     + outputFile.getAbsolutePath());
+            bw.newLine();
+            bw.close();
+        }
+        catch (IOException e2) {
+            if (outputFile != null)
+                System.err.println(day + "-" + "Cannot write to: "
+                                   + outputFile.getAbsolutePath());
+        }
+      }
+      else System.err.println(day + "-" + "Cannot write to System.out");
+      return;
+    }
+  }
+}

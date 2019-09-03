@@ -1,0 +1,2 @@
+To rerun jj file (using javacc, of course), execute the javacc-run.sh.
+Read the comments in that file for more info on what's going on.
